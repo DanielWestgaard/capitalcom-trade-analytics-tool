@@ -1050,6 +1050,26 @@ const TradingDashboard = () => {
             </div>
           </div>
         </ChartCard>
+
+        {/* Long vs Short */}
+        <ChartCard title="Long vs Short" subtitle="Direction comparison">
+          <div className="space-y-4 p-4">
+            {metrics.directionStats.map((stat, idx) => (
+              <div key={idx} className="bg-slate-900/50 rounded-lg p-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-semibold text-lg">{stat.name}</span>
+                  <span className={`text-xl font-bold ${stat.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    ${stat.pnl.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm text-slate-400">
+                  <span>{stat.trades} trades</span>
+                  <span>Win rate: {stat.winRate.toFixed(1)}%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </ChartCard>
       </div>
 
       {/* Best and Worst Trades */}
