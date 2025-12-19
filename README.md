@@ -50,6 +50,20 @@ npm install
 npm run dev
 ```
 
+The app will open at `http://localhost:5173` (or the next available port). Your browser should open automatically, or navigate to the URL manually.
+
+To stop the server, press `Ctrl+C` in the terminal.
+
+4. Build for production (optional):
+```bash
+npm run build
+```
+
+5. Preview production build (optional):
+```bash
+npm run preview
+```
+
 ## Usage
 
 1. **Upload CSV File** - Click "Select CSV File" to import your Capital.com trade history
