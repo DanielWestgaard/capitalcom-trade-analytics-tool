@@ -785,14 +785,15 @@ const TradingDashboard = () => {
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
               <XAxis dataKey="date" stroke="#94a3b8" style={{ fontSize: '12px' }} />
               <YAxis stroke="#94a3b8" style={{ fontSize: '12px' }} />
-              <Tooltip 
+              <Tooltip
                 contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-                labelStyle={{ color: '#94a3b8' }}
+                labelStyle={{ color: '#e2e8f0' }}
+                itemStyle={{ color: '#e2e8f0' }}
               />
-              <Line 
-                type="monotone" 
-                dataKey="equity" 
-                stroke="#06b6d4" 
+              <Line
+                type="monotone"
+                dataKey="equity"
+                stroke="#06b6d4"
                 strokeWidth={2}
                 dot={{ fill: '#06b6d4', r: 3 }}
               />
@@ -807,9 +808,10 @@ const TradingDashboard = () => {
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
               <XAxis dataKey="day" stroke="#94a3b8" style={{ fontSize: '12px' }} />
               <YAxis stroke="#94a3b8" style={{ fontSize: '12px' }} />
-              <Tooltip 
+              <Tooltip
                 contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-                labelStyle={{ color: '#94a3b8' }}
+                labelStyle={{ color: '#e2e8f0' }}
+                itemStyle={{ color: '#e2e8f0' }}
               />
               <Bar dataKey="pnl" fill="#06b6d4" radius={[8, 8, 0, 0]} />
             </BarChart>
@@ -823,9 +825,10 @@ const TradingDashboard = () => {
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
               <XAxis dataKey="hour" stroke="#94a3b8" style={{ fontSize: '10px' }} />
               <YAxis stroke="#94a3b8" style={{ fontSize: '12px' }} />
-              <Tooltip 
+              <Tooltip
                 contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-                labelStyle={{ color: '#94a3b8' }}
+                labelStyle={{ color: '#e2e8f0' }}
+                itemStyle={{ color: '#e2e8f0' }}
               />
               <Bar dataKey="pnl" radius={[8, 8, 0, 0]}>
                 {metrics.hourPerformance.map((entry, index) => (
@@ -837,7 +840,7 @@ const TradingDashboard = () => {
         </ChartCard>
 
         {/* Monthly Performance */}
-        <ChartCard title="Monthly Performance" subtitle="P&L by month" span2>
+        <ChartCard title="Monthly Performance" subtitle="P&L by month">
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={metrics.monthlyPerformance}>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
@@ -845,7 +848,8 @@ const TradingDashboard = () => {
               <YAxis stroke="#94a3b8" style={{ fontSize: '12px' }} />
               <Tooltip
                 contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-                labelStyle={{ color: '#94a3b8' }}
+                labelStyle={{ color: '#e2e8f0' }}
+                itemStyle={{ color: '#e2e8f0' }}
               />
               <Bar dataKey="pnl" radius={[8, 8, 0, 0]}>
                 {metrics.monthlyPerformance.map((entry, index) => (
@@ -916,7 +920,7 @@ const TradingDashboard = () => {
 
       {/* Additional Stats */}
       <div className="max-w-7xl mx-auto mb-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <ChartCard title="Streak Analysis" subtitle="Consecutive wins and losses">
             <div className="space-y-4 p-4">
               <div className="flex justify-between items-center">
@@ -930,8 +934,8 @@ const TradingDashboard = () => {
             </div>
           </ChartCard>
 
-          <ChartCard title="Instrument Breakdown" subtitle="Performance by symbol" span2>
-            <div className="space-y-2">
+          <ChartCard title="Instrument Breakdown" subtitle="Performance by symbol">
+            <div className="space-y-2 max-h-64 overflow-y-auto">
               {metrics.instruments.map((inst, idx) => (
                 <div key={idx} className="flex justify-between items-center bg-slate-900/50 rounded-lg p-3">
                   <div>
