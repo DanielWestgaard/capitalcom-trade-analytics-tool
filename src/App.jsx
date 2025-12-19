@@ -422,6 +422,8 @@ const TradingDashboard = () => {
       totalTrades: filteredTrades.length,
       winners: winners.length,
       losers: losers.length,
+      grossProfit,
+      grossLoss,
       equityCurve,
       monthlyPerformance,
       dayPerformance,
@@ -838,8 +840,14 @@ const TradingDashboard = () => {
                 contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
                 labelStyle={{ color: '#e2e8f0' }}
                 itemStyle={{ color: '#e2e8f0' }}
+                formatter={(value, name) => {
+                  if (name === 'pnl') return [`$${value.toFixed(2)}`, 'P&L'];
+                  if (name === 'trades') return [value, 'Trades'];
+                  return [value, name];
+                }}
               />
               <Bar dataKey="pnl" fill="#06b6d4" radius={[8, 8, 0, 0]} />
+              <Bar dataKey="trades" fill="#8b5cf6" radius={[8, 8, 0, 0]} hide />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -855,12 +863,18 @@ const TradingDashboard = () => {
                 contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
                 labelStyle={{ color: '#e2e8f0' }}
                 itemStyle={{ color: '#e2e8f0' }}
+                formatter={(value, name, props) => {
+                  if (name === 'pnl') return [`$${value.toFixed(2)}`, 'P&L'];
+                  return [value, name];
+                }}
+                labelFormatter={(label) => `Hour: ${label}`}
               />
               <Bar dataKey="pnl" radius={[8, 8, 0, 0]}>
                 {metrics.hourPerformance.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? '#10b981' : '#ef4444'} />
                 ))}
               </Bar>
+              <Bar dataKey="trades" fill="#8b5cf6" radius={[8, 8, 0, 0]} hide />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -876,34 +890,78 @@ const TradingDashboard = () => {
                 contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
                 labelStyle={{ color: '#e2e8f0' }}
                 itemStyle={{ color: '#e2e8f0' }}
+                formatter={(value, name) => {
+                  if (name === 'pnl') return [`$${value.toFixed(2)}`, 'P&L'];
+                  if (name === 'trades') return [value, 'Trades'];
+                  if (name === 'winners') return [value, 'Wins'];
+                  if (name === 'losers') return [value, 'Losses'];
+                  return [value, name];
+                }}
               />
               <Bar dataKey="pnl" radius={[8, 8, 0, 0]}>
                 {metrics.monthlyPerformance.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? '#10b981' : '#ef4444'} />
                 ))}
               </Bar>
+              <Bar dataKey="trades" fill="#8b5cf6" radius={[8, 8, 0, 0]} hide />
+              <Bar dataKey="winners" fill="#10b981" radius={[8, 8, 0, 0]} hide />
+              <Bar dataKey="losers" fill="#ef4444" radius={[8, 8, 0, 0]} hide />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
 
-        {/* Long vs Short */}
-        <ChartCard title="Long vs Short" subtitle="Direction comparison">
-          <div className="space-y-4 p-4">
-            {metrics.directionStats.map((stat, idx) => (
-              <div key={idx} className="bg-slate-900/50 rounded-lg p-4">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="font-semibold text-lg">{stat.name}</span>
-                  <span className={`text-xl font-bold ${stat.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    ${stat.pnl.toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm text-slate-400">
-                  <span>{stat.trades} trades</span>
-                  <span>Win rate: {stat.winRate.toFixed(1)}%</span>
-                </div>
-              </div>
-            ))}
-          </div>
+        {/* Win/Loss Distribution */}
+        <ChartCard title="Win/Loss Distribution" subtitle="Trade outcome breakdown">
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie
+                data={[
+                  { name: 'Winning Trades', value: metrics.winners, fill: '#10b981' },
+                  { name: 'Losing Trades', value: metrics.losers, fill: '#ef4444' }
+                ]}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                outerRadius={100}
+                dataKey="value"
+              >
+              </Pie>
+              <Tooltip
+                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                labelStyle={{ color: '#e2e8f0' }}
+                itemStyle={{ color: '#e2e8f0' }}
+                formatter={(value) => [`${value} trades`, 'Count']}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        {/* Profit/Loss P&L Distribution */}
+        <ChartCard title="Profit/Loss P&L" subtitle="Total gains vs losses">
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie
+                data={[
+                  { name: 'Total Profit', value: metrics.grossProfit, fill: '#10b981' },
+                  { name: 'Total Loss', value: metrics.grossLoss, fill: '#ef4444' }
+                ].filter(d => d.value > 0)}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ name, value, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                outerRadius={100}
+                dataKey="value"
+              >
+              </Pie>
+              <Tooltip
+                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                labelStyle={{ color: '#e2e8f0' }}
+                itemStyle={{ color: '#e2e8f0' }}
+                formatter={(value) => [`$${value.toFixed(2)}`, 'Amount']}
+              />
+            </PieChart>
+          </ResponsiveContainer>
         </ChartCard>
 
         {/* Trade Quality Metrics */}
