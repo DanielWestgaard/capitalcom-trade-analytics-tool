@@ -77,26 +77,48 @@ const TradingDashboard = () => {
 
   const parseCSV = (csvText) => {
     const lines = csvText.split('\n');
-    const headers = lines[0].split(',').map(h => h.trim());
-    
+
+    // Helper function to parse a CSV line with quoted values
+    const parseCSVLine = (line) => {
+      const values = [];
+      let current = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          values.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      values.push(current.trim());
+      return values;
+    };
+
+    const headers = parseCSVLine(lines[0]);
     const parsedTrades = [];
-    
+
     for (let i = 1; i < lines.length; i++) {
       if (!lines[i].trim()) continue;
-      
-      const values = lines[i].split(',');
+
+      const values = parseCSVLine(lines[i]);
       const trade = {};
-      
+
       headers.forEach((header, index) => {
-        trade[header] = values[index]?.trim() || '';
+        trade[header] = values[index] || '';
       });
-      
+
       // Parse the trade data
       const quantity = parseFloat(trade['Quantity']);
       const rpl = parseFloat(trade['Rpl Converted']) || 0;
       const fee = parseFloat(trade['Fee']) || 0;
       const swap = parseFloat(trade['Swap Converted']) || 0;
-      
+
       parsedTrades.push({
         id: trade['Trade Id'],
         instrument: trade['Instrument Symbol'] || trade['Instrument Name'],
@@ -114,18 +136,25 @@ const TradingDashboard = () => {
         status: trade['Status']
       });
     }
-    
-    return parsedTrades.filter(t => t.pnl !== 0); // Only completed trades
+
+    console.log('All parsed trades:', parsedTrades);
+    const filteredTrades = parsedTrades.filter(t => t.pnl !== 0);
+    console.log('Filtered trades (pnl !== 0):', filteredTrades);
+    return filteredTrades; // Only completed trades
   };
 
   const handleFileUpload = (event) => {
+    console.log('File upload triggered', event);
     const file = event.target.files[0];
+    console.log('Selected file:', file);
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = (e) => {
       const csvText = e.target.result;
+      console.log('CSV loaded, length:', csvText.length);
       const parsedTrades = parseCSV(csvText);
+      console.log('Parsed trades:', parsedTrades.length);
       setTrades(parsedTrades);
     };
     reader.readAsText(file);
@@ -276,26 +305,28 @@ const TradingDashboard = () => {
             </h1>
             <p className="text-slate-400 text-lg">Advanced performance insights for your trading</p>
           </div>
-          
+
           <div className="bg-slate-800/50 backdrop-blur border border-slate-700/50 rounded-2xl p-12 text-center shadow-2xl">
             <Upload className="w-16 h-16 mx-auto mb-6 text-cyan-400" />
             <h2 className="text-2xl font-semibold mb-4">Upload Your Trading Data</h2>
             <p className="text-slate-400 mb-8">
               Import your Capital.com CSV report to unlock detailed analytics and insights
             </p>
-            
-            <label className="inline-block">
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-              <div className="px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 rounded-xl cursor-pointer transition-all duration-300 font-semibold text-lg shadow-lg hover:shadow-cyan-500/25 transform hover:scale-105">
-                Select CSV File
-              </div>
-            </label>
-            
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 rounded-xl cursor-pointer transition-all duration-300 font-semibold text-lg shadow-lg hover:shadow-cyan-500/25 transform hover:scale-105"
+            >
+              Select CSV File
+            </button>
+
             <div className="mt-8 text-left text-sm text-slate-500 bg-slate-900/50 rounded-lg p-6 border border-slate-700/30">
               <p className="font-semibold text-slate-300 mb-2">Expected CSV format from Capital.com:</p>
               <ul className="space-y-1 list-disc list-inside">
@@ -310,8 +341,26 @@ const TradingDashboard = () => {
     );
   }
 
+  if (!metrics) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-8 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-cyan-400 text-xl mb-4">Loading your analytics...</div>
+          <div className="text-slate-400">{trades.length} trades loaded</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv"
+        onChange={handleFileUpload}
+        className="hidden"
+      />
       {/* Header */}
       <div className="max-w-7xl mx-auto mb-8">
         <div className="flex justify-between items-center mb-6">
@@ -333,18 +382,15 @@ const TradingDashboard = () => {
               <Filter className="w-4 h-4" />
               Filters
             </button>
-            
-            <label className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors flex items-center gap-2 cursor-pointer border border-slate-700">
+
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors flex items-center gap-2 cursor-pointer border border-slate-700"
+            >
               <Upload className="w-4 h-4" />
               Upload New
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-            </label>
-            
+            </button>
+
             <button
               onClick={clearData}
               className="px-4 py-2 bg-red-900/30 hover:bg-red-900/50 rounded-lg transition-colors flex items-center gap-2 border border-red-800/50"
