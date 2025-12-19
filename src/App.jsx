@@ -9,6 +9,9 @@ const TradingDashboard = () => {
   const [filterDirection, setFilterDirection] = useState('all');
   const [filterInstrument, setFilterInstrument] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [error, setError] = useState(null);
+  const [sortConfig, setSortConfig] = useState({ key: 'timestamp', direction: 'desc' });
+  const [searchTerm, setSearchTerm] = useState('');
   const fileInputRef = useRef(null);
 
   // Load trades from persistent storage on mount
@@ -76,7 +79,11 @@ const TradingDashboard = () => {
   };
 
   const parseCSV = (csvText) => {
-    const lines = csvText.split('\n');
+    const lines = csvText.split('\n').filter(line => line.trim());
+
+    if (lines.length < 2) {
+      throw new Error('CSV file appears to be empty or contains only headers');
+    }
 
     // Helper function to parse a CSV line with quoted values
     const parseCSVLine = (line) => {
@@ -101,7 +108,16 @@ const TradingDashboard = () => {
     };
 
     const headers = parseCSVLine(lines[0]);
+
+    // Validate required columns
+    const requiredColumns = ['Trade Id', 'Quantity', 'Price', 'Timestamp'];
+    const missingColumns = requiredColumns.filter(col => !headers.includes(col));
+    if (missingColumns.length > 0) {
+      throw new Error(`CSV is missing required columns: ${missingColumns.join(', ')}`);
+    }
+
     const parsedTrades = [];
+    let skippedRows = 0;
 
     for (let i = 1; i < lines.length; i++) {
       if (!lines[i].trim()) continue;
@@ -113,18 +129,32 @@ const TradingDashboard = () => {
         trade[header] = values[index] || '';
       });
 
-      // Parse the trade data
+      // Parse the trade data with validation
       const quantity = parseFloat(trade['Quantity']);
+      const price = parseFloat(trade['Price']);
       const rpl = parseFloat(trade['Rpl Converted']) || 0;
       const fee = parseFloat(trade['Fee']) || 0;
       const swap = parseFloat(trade['Swap Converted']) || 0;
+
+      // Validate data
+      if (isNaN(quantity) || isNaN(price) || quantity === 0) {
+        skippedRows++;
+        continue;
+      }
+
+      // Validate timestamp
+      const timestamp = new Date(trade['Timestamp']);
+      if (isNaN(timestamp.getTime())) {
+        skippedRows++;
+        continue;
+      }
 
       parsedTrades.push({
         id: trade['Trade Id'],
         instrument: trade['Instrument Symbol'] || trade['Instrument Name'],
         direction: quantity > 0 ? 'Long' : 'Short',
         quantity: Math.abs(quantity),
-        price: parseFloat(trade['Price']) || 0,
+        price: price,
         takeProfit: parseFloat(trade['Take Profit']) || 0,
         stopLoss: parseFloat(trade['Stop Loss']) || 0,
         pnl: rpl,
@@ -132,32 +162,52 @@ const TradingDashboard = () => {
         swap: swap,
         netPnl: rpl - fee + swap,
         timestamp: trade['Timestamp'],
+        timestampDate: timestamp,
         executionType: trade['Execution Type'],
         status: trade['Status']
       });
     }
 
-    console.log('All parsed trades:', parsedTrades);
-    const filteredTrades = parsedTrades.filter(t => t.pnl !== 0);
-    console.log('Filtered trades (pnl !== 0):', filteredTrades);
-    return filteredTrades; // Only completed trades
+    if (skippedRows > 0) {
+      console.warn(`Skipped ${skippedRows} invalid rows during CSV parsing`);
+    }
+
+    const completedTrades = parsedTrades.filter(t => t.pnl !== 0);
+
+    if (completedTrades.length === 0) {
+      throw new Error(`No completed trades found in CSV. All ${parsedTrades.length} trades have P&L = 0 (likely pending/open trades)`);
+    }
+
+    console.log(`Parsed ${parsedTrades.length} total trades, ${completedTrades.length} completed trades`);
+    return completedTrades;
   };
 
   const handleFileUpload = (event) => {
-    console.log('File upload triggered', event);
     const file = event.target.files[0];
-    console.log('Selected file:', file);
     if (!file) return;
+
+    setError(null); // Clear any previous errors
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      const csvText = e.target.result;
-      console.log('CSV loaded, length:', csvText.length);
-      const parsedTrades = parseCSV(csvText);
-      console.log('Parsed trades:', parsedTrades.length);
-      setTrades(parsedTrades);
+      try {
+        const csvText = e.target.result;
+        const parsedTrades = parseCSV(csvText);
+        setTrades(parsedTrades);
+        console.log(`Successfully loaded ${parsedTrades.length} completed trades`);
+      } catch (err) {
+        console.error('CSV parsing error:', err);
+        setError(err.message);
+        setTrades([]);
+      }
+    };
+    reader.onerror = () => {
+      setError('Failed to read file. Please try again.');
     };
     reader.readAsText(file);
+
+    // Reset file input to allow re-uploading the same file
+    event.target.value = '';
   };
 
   // Calculate metrics
@@ -168,16 +218,20 @@ const TradingDashboard = () => {
     const totalFees = filteredTrades.reduce((sum, t) => sum + t.fee, 0);
     const winners = filteredTrades.filter(t => t.netPnl > 0);
     const losers = filteredTrades.filter(t => t.netPnl < 0);
-    
+
     const winRate = (winners.length / filteredTrades.length) * 100;
+    const lossRate = (losers.length / filteredTrades.length) * 100;
     const avgWin = winners.length > 0 ? winners.reduce((sum, t) => sum + t.netPnl, 0) / winners.length : 0;
     const avgLoss = losers.length > 0 ? Math.abs(losers.reduce((sum, t) => sum + t.netPnl, 0) / losers.length) : 0;
-    
+
     const grossProfit = winners.reduce((sum, t) => sum + t.netPnl, 0);
     const grossLoss = Math.abs(losers.reduce((sum, t) => sum + t.netPnl, 0));
     const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 999 : 0;
-    
-    const riskReward = avgLoss > 0 ? avgWin / avgLoss : 0;
+
+    const riskReward = avgLoss > 0 ? avgWin / avgLoss : avgWin > 0 ? 999 : 0;
+
+    // Expectancy: Expected value per trade
+    const expectancy = (avgWin * (winRate / 100)) - (avgLoss * (lossRate / 100));
     
     // Equity curve
     const sortedTrades = [...filteredTrades].sort((a, b) => 
@@ -185,15 +239,71 @@ const TradingDashboard = () => {
     );
     
     let runningTotal = 0;
+    let peak = 0;
+    let maxDrawdown = 0;
+    let maxDrawdownPercent = 0;
+    const drawdownData = [];
+
     const equityCurve = sortedTrades.map(trade => {
       runningTotal += trade.netPnl;
+
+      // Calculate drawdown
+      if (runningTotal > peak) {
+        peak = runningTotal;
+      }
+      const drawdown = peak - runningTotal;
+      const drawdownPercent = peak > 0 ? (drawdown / peak) * 100 : 0;
+
+      if (drawdown > maxDrawdown) {
+        maxDrawdown = drawdown;
+        maxDrawdownPercent = drawdownPercent;
+      }
+
       return {
         date: new Date(trade.timestamp).toLocaleDateString(),
         equity: runningTotal,
-        pnl: trade.netPnl
+        pnl: trade.netPnl,
+        drawdown: drawdown
       };
     });
-    
+
+    // Recovery Factor: Total Profit / Max Drawdown
+    const recoveryFactor = maxDrawdown > 0 ? totalPnl / maxDrawdown : totalPnl > 0 ? 999 : 0;
+
+    // Average Trade Duration
+    let totalDuration = 0;
+    let tradesWithDuration = 0;
+    for (let i = 1; i < sortedTrades.length; i++) {
+      const prevTime = new Date(sortedTrades[i-1].timestamp).getTime();
+      const currTime = new Date(sortedTrades[i].timestamp).getTime();
+      const duration = currTime - prevTime;
+      if (duration > 0 && duration < 24 * 60 * 60 * 1000) { // Less than 24 hours
+        totalDuration += duration;
+        tradesWithDuration++;
+      }
+    }
+    const avgTradeDuration = tradesWithDuration > 0 ? totalDuration / tradesWithDuration : 0;
+    const avgTradeDurationMins = avgTradeDuration / (1000 * 60);
+
+    // Monthly Performance
+    const monthStats = {};
+    sortedTrades.forEach(trade => {
+      const date = new Date(trade.timestamp);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      if (!monthStats[monthKey]) {
+        monthStats[monthKey] = { month: monthKey, pnl: 0, trades: 0, winners: 0, losers: 0 };
+      }
+      monthStats[monthKey].pnl += trade.netPnl;
+      monthStats[monthKey].trades += 1;
+      if (trade.netPnl > 0) monthStats[monthKey].winners += 1;
+      else if (trade.netPnl < 0) monthStats[monthKey].losers += 1;
+    });
+
+    const monthlyPerformance = Object.values(monthStats).map(m => ({
+      ...m,
+      winRate: m.trades > 0 ? (m.winners / m.trades) * 100 : 0
+    }));
+
     // Performance by day of week
     const dayStats = {};
     filteredTrades.forEach(trade => {
@@ -257,15 +367,28 @@ const TradingDashboard = () => {
       }
     });
 
-    // Instrument breakdown
+    // Instrument breakdown with win rates
     const instrumentStats = {};
     filteredTrades.forEach(trade => {
       if (!instrumentStats[trade.instrument]) {
-        instrumentStats[trade.instrument] = { name: trade.instrument, pnl: 0, trades: 0 };
+        instrumentStats[trade.instrument] = {
+          name: trade.instrument,
+          pnl: 0,
+          trades: 0,
+          winners: 0,
+          losers: 0
+        };
       }
       instrumentStats[trade.instrument].pnl += trade.netPnl;
       instrumentStats[trade.instrument].trades += 1;
+      if (trade.netPnl > 0) instrumentStats[trade.instrument].winners += 1;
+      else if (trade.netPnl < 0) instrumentStats[trade.instrument].losers += 1;
     });
+
+    const instruments = Object.values(instrumentStats).map(inst => ({
+      ...inst,
+      winRate: inst.trades > 0 ? (inst.winners / inst.trades) * 100 : 0
+    }));
 
     return {
       totalPnl,
@@ -275,10 +398,16 @@ const TradingDashboard = () => {
       avgLoss,
       profitFactor,
       riskReward,
+      expectancy,
+      maxDrawdown,
+      maxDrawdownPercent,
+      recoveryFactor,
+      avgTradeDurationMins,
       totalTrades: filteredTrades.length,
       winners: winners.length,
       losers: losers.length,
       equityCurve,
+      monthlyPerformance,
       dayPerformance,
       hourPerformance,
       directionStats,
@@ -286,7 +415,7 @@ const TradingDashboard = () => {
       worstTrades,
       maxWinStreak,
       maxLossStreak,
-      instruments: Object.values(instrumentStats)
+      instruments
     };
   }, [filteredTrades]);
 
@@ -294,6 +423,90 @@ const TradingDashboard = () => {
     const instruments = new Set(trades.map(t => t.instrument));
     return Array.from(instruments);
   }, [trades]);
+
+  // Table sorting and filtering
+  const sortedAndFilteredTrades = useMemo(() => {
+    let result = [...filteredTrades];
+
+    // Apply search filter
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(trade =>
+        trade.instrument.toLowerCase().includes(term) ||
+        trade.id.toLowerCase().includes(term) ||
+        trade.direction.toLowerCase().includes(term)
+      );
+    }
+
+    // Apply sorting
+    result.sort((a, b) => {
+      let aValue, bValue;
+
+      switch (sortConfig.key) {
+        case 'timestamp':
+          aValue = new Date(a.timestamp).getTime();
+          bValue = new Date(b.timestamp).getTime();
+          break;
+        case 'netPnl':
+        case 'pnl':
+        case 'fee':
+        case 'quantity':
+        case 'price':
+          aValue = a[sortConfig.key];
+          bValue = b[sortConfig.key];
+          break;
+        case 'instrument':
+        case 'direction':
+          aValue = a[sortConfig.key].toLowerCase();
+          bValue = b[sortConfig.key].toLowerCase();
+          return sortConfig.direction === 'asc'
+            ? aValue.localeCompare(bValue)
+            : bValue.localeCompare(aValue);
+        default:
+          return 0;
+      }
+
+      return sortConfig.direction === 'asc' ? aValue - bValue : bValue - aValue;
+    });
+
+    return result;
+  }, [filteredTrades, sortConfig, searchTerm]);
+
+  const handleSort = (key) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc'
+    }));
+  };
+
+  const exportToCSV = () => {
+    const headers = ['Date', 'Instrument', 'Direction', 'Quantity', 'Price', 'P&L', 'Fees', 'Net P&L'];
+    const rows = sortedAndFilteredTrades.map(trade => [
+      new Date(trade.timestamp).toLocaleString(),
+      trade.instrument,
+      trade.direction,
+      trade.quantity,
+      trade.price.toFixed(2),
+      trade.pnl.toFixed(2),
+      trade.fee.toFixed(2),
+      trade.netPnl.toFixed(2)
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `trading_analytics_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   if (trades.length === 0) {
     return (
@@ -312,6 +525,13 @@ const TradingDashboard = () => {
             <p className="text-slate-400 mb-8">
               Import your Capital.com CSV report to unlock detailed analytics and insights
             </p>
+
+            {error && (
+              <div className="mb-6 p-4 bg-red-900/30 border border-red-800/50 rounded-lg text-red-300 text-sm">
+                <p className="font-semibold mb-1">Error loading CSV:</p>
+                <p>{error}</p>
+              </div>
+            )}
 
             <input
               ref={fileInputRef}
@@ -374,13 +594,21 @@ const TradingDashboard = () => {
             </p>
           </div>
           
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors flex items-center gap-2 border border-slate-700"
             >
               <Filter className="w-4 h-4" />
               Filters
+            </button>
+
+            <button
+              onClick={exportToCSV}
+              className="px-4 py-2 bg-green-900/30 hover:bg-green-900/50 rounded-lg transition-colors flex items-center gap-2 border border-green-800/50"
+            >
+              <Download className="w-4 h-4" />
+              Export CSV
             </button>
 
             <button
@@ -511,6 +739,41 @@ const TradingDashboard = () => {
             positive={metrics.riskReward >= 1.5}
           />
         </div>
+
+        {/* Advanced Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+          <MetricCard
+            title="Expectancy"
+            value={`$${metrics.expectancy.toFixed(2)}`}
+            subtitle="Expected value/trade"
+            icon={<TrendingUp />}
+            positive={metrics.expectancy > 0}
+          />
+
+          <MetricCard
+            title="Max Drawdown"
+            value={`$${metrics.maxDrawdown.toFixed(2)}`}
+            subtitle={`${metrics.maxDrawdownPercent.toFixed(1)}% from peak`}
+            icon={<TrendingDown />}
+            positive={false}
+          />
+
+          <MetricCard
+            title="Recovery Factor"
+            value={metrics.recoveryFactor >= 999 ? '∞' : metrics.recoveryFactor.toFixed(2)}
+            subtitle={metrics.recoveryFactor >= 3 ? 'Excellent' : metrics.recoveryFactor >= 2 ? 'Good' : 'Fair'}
+            icon={<Target />}
+            positive={metrics.recoveryFactor >= 2}
+          />
+
+          <MetricCard
+            title="Avg Duration"
+            value={`${Math.floor(metrics.avgTradeDurationMins)}m`}
+            subtitle="Time between trades"
+            icon={<Clock />}
+            positive={true}
+          />
+        </div>
       </div>
 
       {/* Charts Section */}
@@ -566,6 +829,26 @@ const TradingDashboard = () => {
               />
               <Bar dataKey="pnl" radius={[8, 8, 0, 0]}>
                 {metrics.hourPerformance.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? '#10b981' : '#ef4444'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        {/* Monthly Performance */}
+        <ChartCard title="Monthly Performance" subtitle="P&L by month" span2>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={metrics.monthlyPerformance}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+              <XAxis dataKey="month" stroke="#94a3b8" style={{ fontSize: '11px' }} angle={-45} textAnchor="end" height={80} />
+              <YAxis stroke="#94a3b8" style={{ fontSize: '12px' }} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                labelStyle={{ color: '#94a3b8' }}
+              />
+              <Bar dataKey="pnl" radius={[8, 8, 0, 0]}>
+                {metrics.monthlyPerformance.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? '#10b981' : '#ef4444'} />
                 ))}
               </Bar>
@@ -653,7 +936,9 @@ const TradingDashboard = () => {
                 <div key={idx} className="flex justify-between items-center bg-slate-900/50 rounded-lg p-3">
                   <div>
                     <div className="font-semibold">{inst.name}</div>
-                    <div className="text-xs text-slate-400">{inst.trades} trades</div>
+                    <div className="text-xs text-slate-400">
+                      {inst.trades} trades • Win rate: {inst.winRate.toFixed(1)}% ({inst.winners}W / {inst.losers}L)
+                    </div>
                   </div>
                   <div className={`text-lg font-bold ${inst.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     ${inst.pnl.toFixed(2)}
@@ -667,23 +952,48 @@ const TradingDashboard = () => {
 
       {/* Trade Log Table */}
       <div className="max-w-7xl mx-auto">
-        <ChartCard title="Complete Trade Log" subtitle="All trades with details">
+        <ChartCard title="Complete Trade Log" subtitle={`${sortedAndFilteredTrades.length} trades`}>
+          <div className="mb-4">
+            <input
+              type="text"
+              placeholder="Search by instrument, ID, or direction..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-cyan-500"
+            />
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-slate-700">
                 <tr className="text-left text-slate-400">
-                  <th className="pb-3 px-2">Date</th>
-                  <th className="pb-3 px-2">Instrument</th>
-                  <th className="pb-3 px-2">Direction</th>
-                  <th className="pb-3 px-2">Quantity</th>
-                  <th className="pb-3 px-2">Price</th>
-                  <th className="pb-3 px-2">P&L</th>
-                  <th className="pb-3 px-2">Fees</th>
-                  <th className="pb-3 px-2">Net P&L</th>
+                  <th className="pb-3 px-2 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('timestamp')}>
+                    Date {sortConfig.key === 'timestamp' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th className="pb-3 px-2 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('instrument')}>
+                    Instrument {sortConfig.key === 'instrument' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th className="pb-3 px-2 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('direction')}>
+                    Direction {sortConfig.key === 'direction' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th className="pb-3 px-2 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('quantity')}>
+                    Quantity {sortConfig.key === 'quantity' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th className="pb-3 px-2 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('price')}>
+                    Price {sortConfig.key === 'price' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th className="pb-3 px-2 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('pnl')}>
+                    P&L {sortConfig.key === 'pnl' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th className="pb-3 px-2 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('fee')}>
+                    Fees {sortConfig.key === 'fee' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th className="pb-3 px-2 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('netPnl')}>
+                    Net P&L {sortConfig.key === 'netPnl' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {filteredTrades.map((trade, idx) => (
+                {sortedAndFilteredTrades.map((trade, idx) => (
                   <tr key={idx} className="border-b border-slate-800 hover:bg-slate-800/50">
                     <td className="py-3 px-2">{new Date(trade.timestamp).toLocaleString()}</td>
                     <td className="py-3 px-2">{trade.instrument}</td>
