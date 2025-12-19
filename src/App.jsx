@@ -496,28 +496,12 @@ const TradingDashboard = () => {
   };
 
   const exportToCSV = () => {
-    const headers = ['Date', 'Instrument', 'Direction', 'Quantity', 'Price', 'Margin Used', 'Leverage', 'P&L', 'Fees', 'Net P&L', 'Return %', 'R:R'];
+    const headers = ['Date', 'Instrument', 'Direction', 'Quantity', 'Price', 'Margin Used', 'Leverage', 'P&L', 'Fees', 'Net P&L', 'Return %'];
     const rows = sortedAndFilteredTrades.map(trade => {
       const positionSize = trade.quantity * trade.price;
       const leverage = estimateLeverage(trade.instrument);
       const margin = positionSize / leverage;
       const returnPercent = margin > 0 ? (trade.netPnl / margin) * 100 : 0;
-
-      // Calculate Risk:Reward ratio
-      let riskRewardRatio = 'N/A';
-      if (trade.stopLoss > 0 && trade.takeProfit > 0) {
-        let risk, reward;
-        if (trade.direction === 'Long') {
-          risk = Math.abs(trade.price - trade.stopLoss);
-          reward = Math.abs(trade.takeProfit - trade.price);
-        } else {
-          risk = Math.abs(trade.stopLoss - trade.price);
-          reward = Math.abs(trade.price - trade.takeProfit);
-        }
-        if (risk > 0) {
-          riskRewardRatio = `1:${(reward / risk).toFixed(2)}`;
-        }
-      }
 
       return [
         new Date(trade.timestamp).toLocaleString(),
@@ -530,8 +514,7 @@ const TradingDashboard = () => {
         trade.pnl.toFixed(2),
         trade.fee.toFixed(2),
         trade.netPnl.toFixed(2),
-        returnPercent.toFixed(2),
-        riskRewardRatio
+        returnPercent.toFixed(2)
       ];
     });
 
@@ -1079,9 +1062,6 @@ const TradingDashboard = () => {
                   <th className="pb-3 px-2 cursor-pointer hover:text-cyan-400">
                     Return %
                   </th>
-                  <th className="pb-3 px-2 cursor-pointer hover:text-cyan-400">
-                    R:R
-                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1090,22 +1070,6 @@ const TradingDashboard = () => {
                   const leverage = estimateLeverage(trade.instrument);
                   const margin = positionSize / leverage;
                   const returnPercent = margin > 0 ? (trade.netPnl / margin) * 100 : 0;
-
-                  // Calculate Risk:Reward ratio
-                  let riskRewardRatio = 'N/A';
-                  if (trade.stopLoss > 0 && trade.takeProfit > 0) {
-                    let risk, reward;
-                    if (trade.direction === 'Long') {
-                      risk = Math.abs(trade.price - trade.stopLoss);
-                      reward = Math.abs(trade.takeProfit - trade.price);
-                    } else {
-                      risk = Math.abs(trade.stopLoss - trade.price);
-                      reward = Math.abs(trade.price - trade.takeProfit);
-                    }
-                    if (risk > 0) {
-                      riskRewardRatio = `1:${(reward / risk).toFixed(2)}`;
-                    }
-                  }
 
                   return (
                     <tr key={idx} className="border-b border-slate-800 hover:bg-slate-800/50">
@@ -1133,9 +1097,6 @@ const TradingDashboard = () => {
                       </td>
                       <td className={`py-3 px-2 font-semibold ${returnPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {returnPercent.toFixed(2)}%
-                      </td>
-                      <td className="py-3 px-2 text-slate-300">
-                        {riskRewardRatio}
                       </td>
                     </tr>
                   );
