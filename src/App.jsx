@@ -14,6 +14,22 @@ const TradingDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const fileInputRef = useRef(null);
 
+  // Leverage estimation based on instrument type
+  const estimateLeverage = (instrument) => {
+    // Common Capital.com leverage ratios
+    if (instrument.includes('US100') || instrument.includes('SPX') || instrument.includes('DAX')) {
+      return 20; // Indices typically 20:1
+    }
+    if (instrument.includes('EUR') || instrument.includes('USD') || instrument.includes('GBP')) {
+      return 30; // Major forex pairs 30:1
+    }
+    if (instrument.includes('GOLD') || instrument.includes('OIL') || instrument.includes('SILVER')) {
+      return 10; // Commodities 10:1
+    }
+    // Default to 20:1 for most CFDs
+    return 20;
+  };
+
   // Load trades from persistent storage on mount
   useEffect(() => {
     loadFromStorage();
@@ -480,17 +496,44 @@ const TradingDashboard = () => {
   };
 
   const exportToCSV = () => {
-    const headers = ['Date', 'Instrument', 'Direction', 'Quantity', 'Price', 'P&L', 'Fees', 'Net P&L'];
-    const rows = sortedAndFilteredTrades.map(trade => [
-      new Date(trade.timestamp).toLocaleString(),
-      trade.instrument,
-      trade.direction,
-      trade.quantity,
-      trade.price.toFixed(2),
-      trade.pnl.toFixed(2),
-      trade.fee.toFixed(2),
-      trade.netPnl.toFixed(2)
-    ]);
+    const headers = ['Date', 'Instrument', 'Direction', 'Quantity', 'Price', 'Margin Used', 'Leverage', 'P&L', 'Fees', 'Net P&L', 'Return %', 'R:R'];
+    const rows = sortedAndFilteredTrades.map(trade => {
+      const positionSize = trade.quantity * trade.price;
+      const leverage = estimateLeverage(trade.instrument);
+      const margin = positionSize / leverage;
+      const returnPercent = margin > 0 ? (trade.netPnl / margin) * 100 : 0;
+
+      // Calculate Risk:Reward ratio
+      let riskRewardRatio = 'N/A';
+      if (trade.stopLoss > 0 && trade.takeProfit > 0) {
+        let risk, reward;
+        if (trade.direction === 'Long') {
+          risk = Math.abs(trade.price - trade.stopLoss);
+          reward = Math.abs(trade.takeProfit - trade.price);
+        } else {
+          risk = Math.abs(trade.stopLoss - trade.price);
+          reward = Math.abs(trade.price - trade.takeProfit);
+        }
+        if (risk > 0) {
+          riskRewardRatio = `1:${(reward / risk).toFixed(2)}`;
+        }
+      }
+
+      return [
+        new Date(trade.timestamp).toLocaleString(),
+        trade.instrument,
+        trade.direction,
+        trade.quantity,
+        trade.price.toFixed(2),
+        margin.toFixed(2),
+        `${leverage}:1`,
+        trade.pnl.toFixed(2),
+        trade.fee.toFixed(2),
+        trade.netPnl.toFixed(2),
+        returnPercent.toFixed(2),
+        riskRewardRatio
+      ];
+    });
 
     const csvContent = [
       headers.join(','),
@@ -1021,6 +1064,9 @@ const TradingDashboard = () => {
                   <th className="pb-3 px-2 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('price')}>
                     Price {sortConfig.key === 'price' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                   </th>
+                  <th className="pb-3 px-2 cursor-pointer hover:text-cyan-400">
+                    Margin Used
+                  </th>
                   <th className="pb-3 px-2 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('pnl')}>
                     P&L {sortConfig.key === 'pnl' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                   </th>
@@ -1030,31 +1076,70 @@ const TradingDashboard = () => {
                   <th className="pb-3 px-2 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('netPnl')}>
                     Net P&L {sortConfig.key === 'netPnl' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                   </th>
+                  <th className="pb-3 px-2 cursor-pointer hover:text-cyan-400">
+                    Return %
+                  </th>
+                  <th className="pb-3 px-2 cursor-pointer hover:text-cyan-400">
+                    R:R
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {sortedAndFilteredTrades.map((trade, idx) => (
-                  <tr key={idx} className="border-b border-slate-800 hover:bg-slate-800/50">
-                    <td className="py-3 px-2">{new Date(trade.timestamp).toLocaleString()}</td>
-                    <td className="py-3 px-2">{trade.instrument}</td>
-                    <td className="py-3 px-2">
-                      <span className={`px-2 py-1 rounded text-xs ${
-                        trade.direction === 'Long' ? 'bg-blue-900/30 text-blue-300' : 'bg-purple-900/30 text-purple-300'
-                      }`}>
-                        {trade.direction}
-                      </span>
-                    </td>
-                    <td className="py-3 px-2">{trade.quantity}</td>
-                    <td className="py-3 px-2">${trade.price.toFixed(2)}</td>
-                    <td className={`py-3 px-2 font-semibold ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      ${trade.pnl.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-2 text-slate-400">${trade.fee.toFixed(2)}</td>
-                    <td className={`py-3 px-2 font-bold ${trade.netPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      ${trade.netPnl.toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
+                {sortedAndFilteredTrades.map((trade, idx) => {
+                  const positionSize = trade.quantity * trade.price;
+                  const leverage = estimateLeverage(trade.instrument);
+                  const margin = positionSize / leverage;
+                  const returnPercent = margin > 0 ? (trade.netPnl / margin) * 100 : 0;
+
+                  // Calculate Risk:Reward ratio
+                  let riskRewardRatio = 'N/A';
+                  if (trade.stopLoss > 0 && trade.takeProfit > 0) {
+                    let risk, reward;
+                    if (trade.direction === 'Long') {
+                      risk = Math.abs(trade.price - trade.stopLoss);
+                      reward = Math.abs(trade.takeProfit - trade.price);
+                    } else {
+                      risk = Math.abs(trade.stopLoss - trade.price);
+                      reward = Math.abs(trade.price - trade.takeProfit);
+                    }
+                    if (risk > 0) {
+                      riskRewardRatio = `1:${(reward / risk).toFixed(2)}`;
+                    }
+                  }
+
+                  return (
+                    <tr key={idx} className="border-b border-slate-800 hover:bg-slate-800/50">
+                      <td className="py-3 px-2">{new Date(trade.timestamp).toLocaleString()}</td>
+                      <td className="py-3 px-2">{trade.instrument}</td>
+                      <td className="py-3 px-2">
+                        <span className={`px-2 py-1 rounded text-xs ${
+                          trade.direction === 'Long' ? 'bg-blue-900/30 text-blue-300' : 'bg-purple-900/30 text-purple-300'
+                        }`}>
+                          {trade.direction}
+                        </span>
+                      </td>
+                      <td className="py-3 px-2">{trade.quantity}</td>
+                      <td className="py-3 px-2">${trade.price.toFixed(2)}</td>
+                      <td className="py-3 px-2 text-slate-300">
+                        ${margin.toFixed(2)}
+                        <span className="text-xs text-slate-500 ml-1">({leverage}:1)</span>
+                      </td>
+                      <td className={`py-3 px-2 font-semibold ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        ${trade.pnl.toFixed(2)}
+                      </td>
+                      <td className="py-3 px-2 text-slate-400">${trade.fee.toFixed(2)}</td>
+                      <td className={`py-3 px-2 font-bold ${trade.netPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        ${trade.netPnl.toFixed(2)}
+                      </td>
+                      <td className={`py-3 px-2 font-semibold ${returnPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {returnPercent.toFixed(2)}%
+                      </td>
+                      <td className="py-3 px-2 text-slate-300">
+                        {riskRewardRatio}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
