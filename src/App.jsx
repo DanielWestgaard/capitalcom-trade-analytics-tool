@@ -879,6 +879,42 @@ const TradingDashboard = () => {
             ))}
           </div>
         </ChartCard>
+
+        {/* Trade Quality Metrics */}
+        <ChartCard title="Trade Quality" subtitle="Performance consistency">
+          <div className="space-y-4 p-4">
+            <div className="bg-slate-900/50 rounded-lg p-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-slate-400 text-sm">Largest Win</span>
+                <span className="text-xl font-bold text-green-400">
+                  ${metrics.bestTrades[0]?.netPnl.toFixed(2) || '0.00'}
+                </span>
+              </div>
+              <div className="text-xs text-slate-500">
+                {metrics.bestTrades[0]?.instrument || 'N/A'}
+              </div>
+            </div>
+            <div className="bg-slate-900/50 rounded-lg p-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-slate-400 text-sm">Largest Loss</span>
+                <span className="text-xl font-bold text-red-400">
+                  ${metrics.worstTrades[0]?.netPnl.toFixed(2) || '0.00'}
+                </span>
+              </div>
+              <div className="text-xs text-slate-500">
+                {metrics.worstTrades[0]?.instrument || 'N/A'}
+              </div>
+            </div>
+            <div className="bg-slate-900/50 rounded-lg p-4">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-sm">Avg Trade P&L</span>
+                <span className={`text-xl font-bold ${(metrics.totalPnl / metrics.totalTrades) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  ${(metrics.totalPnl / metrics.totalTrades).toFixed(2)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </ChartCard>
       </div>
 
       {/* Best and Worst Trades */}
