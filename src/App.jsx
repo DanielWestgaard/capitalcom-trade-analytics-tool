@@ -867,6 +867,7 @@ const TradingDashboard = () => {
                 contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
                 labelStyle={{ color: '#e2e8f0' }}
                 itemStyle={{ color: '#e2e8f0' }}
+                formatter={(value) => [`$${value.toFixed(2)}`, 'Equity']}
               />
               <Line
                 type="monotone"
