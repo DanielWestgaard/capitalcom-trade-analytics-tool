@@ -320,6 +320,25 @@ const TradingDashboard = () => {
       winRate: m.trades > 0 ? (m.winners / m.trades) * 100 : 0
     }));
 
+    // Trades by Date (daily timeline)
+    const dateStats = {};
+    sortedTrades.forEach(trade => {
+      const date = new Date(trade.timestamp);
+      const dateKey = date.toISOString().split('T')[0]; // YYYY-MM-DD format
+      if (!dateStats[dateKey]) {
+        dateStats[dateKey] = { date: dateKey, trades: 0, pnl: 0 };
+      }
+      dateStats[dateKey].trades += 1;
+      dateStats[dateKey].pnl += trade.netPnl;
+    });
+
+    const tradesByDate = Object.values(dateStats).sort((a, b) =>
+      a.date.localeCompare(b.date)
+    ).map(d => ({
+      ...d,
+      dateFormatted: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    }));
+
     // Performance by day of week
     const dayStats = {};
     filteredTrades.forEach(trade => {
@@ -428,6 +447,7 @@ const TradingDashboard = () => {
       monthlyPerformance,
       dayPerformance,
       hourPerformance,
+      tradesByDate,
       directionStats,
       bestTrades,
       worstTrades,
@@ -806,6 +826,36 @@ const TradingDashboard = () => {
 
       {/* Charts Section */}
       <div className="max-w-7xl mx-auto mb-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Trades Timeline */}
+        <ChartCard title="Trade Activity Timeline" subtitle="Number of trades placed each day" span2>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={metrics.tradesByDate}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+              <XAxis
+                dataKey="dateFormatted"
+                stroke="#94a3b8"
+                style={{ fontSize: '10px' }}
+                angle={-45}
+                textAnchor="end"
+                height={80}
+              />
+              <YAxis stroke="#94a3b8" style={{ fontSize: '12px' }} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                labelStyle={{ color: '#e2e8f0' }}
+                itemStyle={{ color: '#e2e8f0' }}
+                formatter={(value, name) => {
+                  if (name === 'trades') return [value, 'Trades'];
+                  if (name === 'pnl') return [`$${value.toFixed(2)}`, 'P&L'];
+                  return [value, name];
+                }}
+              />
+              <Bar dataKey="trades" fill="#06b6d4" radius={[8, 8, 0, 0]} />
+              <Bar dataKey="pnl" fill="#10b981" radius={[8, 8, 0, 0]} hide />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
         {/* Equity Curve */}
         <ChartCard title="Equity Curve" subtitle="Cumulative P&L over time">
           <ResponsiveContainer width="100%" height={300}>
